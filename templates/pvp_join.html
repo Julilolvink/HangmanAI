@@ -1,0 +1,65 @@
+<!-- templates/pvp_join.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Hangman - Play vs Player</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 2rem auto;
+        }
+        h1 {
+            margin-bottom: 1rem;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        label {
+            font-weight: bold;
+        }
+        input[type="text"] {
+            padding: 0.4rem;
+        }
+        button {
+            padding: 0.5rem 1rem;
+            margin-top: 0.5rem;
+            cursor: pointer;
+        }
+        .error {
+            color: darkred;
+            margin-bottom: 1rem;
+        }
+        a {
+            display: inline-block;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>Play vs Player</h1>
+
+    {% if error %}
+        <div class="error">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('pvp_join') }}">
+        <div>
+            <label for="player_name">Your name:</label><br>
+            <input type="text" id="player_name" name="player_name" placeholder="Player" />
+        </div>
+
+        <div>
+            <label for="room_id">Room number (any integer or word):</label><br>
+            <input type="text" id="room_id" name="room_id" required />
+        </div>
+
+        <button type="submit">Join Room</button>
+    </form>
+
+    <a href="{{ url_for('multiplayer_menu') }}">Back to Multiplayer Menu</a>
+</body>
+</html>

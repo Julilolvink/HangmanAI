@@ -1,0 +1,202 @@
+<!-- templates/pvp_room.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Hangman - Room {{ room_id }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 700px;
+            margin: 2rem auto;
+        }
+        h1, h2 {
+            margin-bottom: 0.75rem;
+        }
+        .info {
+            margin-bottom: 1rem;
+        }
+        .word {
+            font-size: 2rem;
+            letter-spacing: 0.2em;
+            margin-bottom: 1rem;
+        }
+        .guessed {
+            margin-bottom: 1rem;
+        }
+        form {
+            margin-bottom: 1rem;
+        }
+        button {
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+        }
+        .finished {
+            font-weight: bold;
+            margin-top: 1rem;
+        }
+        hr {
+            margin: 1.5rem 0;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Room {{ room_id }}</h1>
+
+    <div class="info">
+        You are: <strong>{{ player_name }}</strong><br>
+        {% if opponent_name %}
+            Opponent: <strong>{{ opponent_name }}</strong>
+        {% else %}
+            Opponent: (none yet)
+        {% endif %}
+    </div>
+
+    {% if mode == "waiting_for_opponent" %}
+        <p>Waiting for another player to join this room...</p>
+        <a href="{{ url_for('multiplayer_menu') }}">Back to Multiplayer Menu</a>
+
+    {% elif mode == "choose_word" %}
+        <h2>Choose your secret word</h2>
+        <p>This is the word your opponent will try to guess.</p>
+        <form method="post" action="{{ url_for('pvp_submit_word', room_id=room_id) }}">
+            <label for="player_word">Your word:</label><br>
+            <input type="text" id="player_word" name="player_word" required>
+            <button type="submit">Confirm Word</button>
+        </form>
+        <p>After both players choose a word, the game will start.</p>
+        <a href="{{ url_for('multiplayer_menu') }}">Back to Multiplayer Menu</a>
+
+    {% elif mode == "waiting_for_other_word" %}
+        <p>You have chosen your word. Waiting for {{ opponent_name }} to choose theirs...</p>
+        <p>(You can refresh this page occasionally.)</p>
+        <a href="{{ url_for('multiplayer_menu') }}">Back to Multiplayer Menu</a>
+
+    {% elif mode == "in_game" or mode == "finished" %}
+        <h2>Your target word ({{ opponent_name }}'s word)</h2>
+        <div class="word">
+            {% for ch in masked_word %}
+                {{ ch }}&nbsp;
+            {% endfor %}
+        </div>
+
+        <div class="guessed">
+            Your guessed letters:
+            {% if guessed_letters %}
+                {{ guessed_letters | join(", ") }}
+            {% else %}
+                (none yet)
+            {% endif %}
+        </div>
+
+        <hr>
+
+        <h2>{{ opponent_name }}'s progress on your word</h2>
+        <div class="word">
+            {% for ch in opp_masked_word %}
+                {{ ch }}&nbsp;
+            {% endfor %}
+        </div>
+
+        <div class="guessed">
+            {{ opponent_name }}'s guessed letters:
+            {% if opp_guessed_letters %}
+                {{ opp_guessed_letters | join(", ") }}
+            {% else %}
+                (none yet)
+            {% endif %}
+        </div>
+
+        {% if mode == "in_game" %}
+            <hr>
+            {% if is_current_turn %}
+                <p>It's your turn. Guess a letter!</p>
+                <form method="post" action="{{ url_for('pvp_guess', room_id=room_id) }}">
+                    <label for="letter">Guess a letter:</label>
+                    <input type="text" id="letter" name="letter" maxlength="1" required>
+                    <button type="submit">Guess</button>
+                </form>
+            {% else %}
+                <p>It's {{ opponent_name }}'s turn. Wait for them to make a move.</p>
+                <p>(You can refresh occasionally to see their guesses.)</p>
+            {% endif %}
+        {% else %}
+            <div class="finished">
+                {% if winner_id == my_id %}
+                    🎉 You won!
+                {% elif winner_id == opp_id %}
+                    {{ opponent_name }} won this game.
+                {% else %}
+                    Game finished with no winner? (Should not normally happen.)
+                {% endif %}
+            </div>
+
+            <hr>
+
+            {% if not my_vote %}
+                <form method="post" action="{{ url_for('pvp_rematch', room_id=room_id) }}">
+                    <button type="submit">Request rematch</button>
+                </form>
+            {% else %}
+                {% if opp_vote %}
+                    <p>Both of you requested a rematch. If nothing changed yet, wait a moment for the reset.</p>
+                {% else %}
+                    <p>You requested a rematch. Waiting for {{ opponent_name }} to accept...</p>
+                {% endif %}
+            {% endif %}
+        {% endif %}
+
+        <a href="{{ url_for('multiplayer_menu') }}">Back to Multiplayer Menu</a>
+
+    {% else %}
+        <p>Unknown room state.</p>
+        <a href="{{ url_for('multiplayer_menu') }}">Back to Multiplayer Menu</a>
+    {% endif %}
+
+    {% set _finished = finished if finished is defined else false %}
+{% set _is_current_turn = is_current_turn if is_current_turn is defined else false %}
+
+{% if mode == "waiting_for_opponent"
+       or mode == "waiting_for_other_word"
+       or mode == "finished"
+       or (mode == "in_game" and not _is_current_turn and not _finished) %}
+<script>
+    const currentVersion ='{{ current_version | default(0) | int }}';
+    const stateUrl = "{{ url_for('pvp_room_state', room_id=room_id) }}";
+
+    function checkForUpdates() {
+        fetch(stateUrl, {
+            headers: {
+                "X-Requested-With": "XMLHttpRequest"
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error("Network response was not ok");
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.error) {
+                console.log("State error:", data.error);
+                return;
+            }
+            if (data.version !== currentVersion) {
+                // Something changed; reload the page to see the new state
+                window.location.reload();
+            }
+        })
+        .catch(err => {
+            console.log("Polling error:", err);
+        });
+    }
+
+    // Poll every 2 seconds
+    setInterval(checkForUpdates, 2000);
+</script>
+{% endif %}
+
+</body>
+</html>

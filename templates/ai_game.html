@@ -1,0 +1,163 @@
+<!-- templates/ai_game.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Hangman - Vs AI</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 700px;
+            margin: 2rem auto;
+        }
+        h1 {
+            margin-bottom: 0.5rem;
+        }
+        .info {
+            margin-bottom: 1rem;
+        }
+        .ai-dialogue {
+            margin-bottom: 1rem;
+            padding: 0.75rem;
+            border-left: 4px solid #ccc;
+            background-color: #f9f9f9;
+        }
+        .word {
+            font-size: 2rem;
+            letter-spacing: 0.2em;
+            margin-bottom: 1rem;
+        }
+        .status {
+            margin-bottom: 1rem;
+        }
+        .guessed {
+            margin-bottom: 1rem;
+        }
+        form {
+            margin-bottom: 1rem;
+        }
+        button {
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+        }
+        .finished {
+            font-weight: bold;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Hangman - You vs {{ ai_name }}</h1>
+
+    <div class="info">
+        <strong>Game ID:</strong> {{ game_id }}<br>
+        <strong>You are:</strong> {{ human_name }}<br>
+        <strong>Opponent:</strong> {{ ai_name }}
+    </div>
+
+    <!-- Your progress on the AI's word -->
+    <h2>Your target word ({{ ai_name }}'s word)</h2>
+    <div class="word">
+        {% for ch in masked_word %}
+            {{ ch }}&nbsp;
+        {% endfor %}
+    </div>
+
+    <div class="guessed">
+        Your guessed letters:
+        {% if guessed_letters %}
+            {{ guessed_letters | join(", ") }}
+        {% else %}
+            (none yet)
+        {% endif %}
+    </div>
+
+    <hr>
+
+    <!-- AI's progress on your word -->
+    <h2>{{ ai_name }}'s progress on your word</h2>
+    <div class="word">
+        {% for ch in ai_masked_word %}
+            {{ ch }}&nbsp;
+        {% endfor %}
+    </div>
+
+    <div class="guessed">
+        {{ ai_name }}'s guessed letters:
+        {% if ai_guessed_letters %}
+            {{ ai_guessed_letters | join(", ") }}
+        {% else %}
+            (none yet)
+        {% endif %}
+    </div>
+
+    {% if not finished %}
+        {% if is_current_turn %}
+            <div class="status">
+                It's your turn. Guess a letter!
+            </div>
+
+            <form method="post" action="{{ url_for('multiplayer_ai_game') }}">
+                <label for="letter">Guess a letter:</label>
+                <input type="text" id="letter" name="letter" maxlength="1" required>
+                <button type="submit">Guess</button>
+            </form>
+        {% elif is_ai_turn %}
+            <div class="status">
+                It's {{ ai_name }}'s turn. {{ ai_name }} is thinking...
+            </div>
+
+            <script>
+                // After a short delay, ask the AI to make its move.
+                // Randomize a little so it feels less robotic.
+                const delayMs = 1500 + Math.random() * 1500;  // 1.5s - 3s
+
+                setTimeout(function() {
+                    fetch("{{ url_for('multiplayer_ai_move') }}", {
+                        method: "POST",
+                        headers: {
+                            "X-Requested-With": "XMLHttpRequest"
+                        }
+                    }).then(function() {
+                        // Reload the page to see the AI's move
+                        window.location.reload();
+                    });
+                }, delayMs);
+            </script>
+        {% else %}
+            <div class="status">
+                Waiting for the next move...
+            </div>
+        {% endif %}
+    {% else %}
+        <div class="finished">
+            {% if winner_id == human_id %}
+                🎉 You won!
+            {% elif winner_id == ai_id %}
+                🤖 {{ ai_name }} won this time.<br>
+                The word you were trying to guess was: "<strong>{{ ai_secret_word }}</strong>".
+            {% else %}
+                Game finished with no winner? (Should not normally happen.)
+            {% endif %}
+        </div>
+        <form method="get" action="{{ url_for('multiplayer_ai_setup') }}">
+            <button type="submit">Play Again vs AI</button>
+        </form>
+    {% endif %}
+
+    <div class="ai-dialogue">
+        <strong>{{ ai_name }} says:</strong>
+        <p>
+            {% if ai_last_message %}
+                {{ ai_last_message }}
+            {% else %}
+                ...
+            {% endif %}
+        </p>
+    </div>
+
+    <a href="{{ url_for('multiplayer_menu') }}">Back to Multiplayer Menu</a>
+
+</body>
+</html>

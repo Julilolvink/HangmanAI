@@ -1,0 +1,66 @@
+<!-- templates/ai_setup.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Hangman - Play vs AI</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 2rem auto;
+        }
+        h1 {
+            margin-bottom: 1rem;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        label {
+            font-weight: bold;
+        }
+        input[type="text"],
+        input[type="number"] {
+            padding: 0.4rem;
+        }
+        button {
+            padding: 0.5rem 1rem;
+            margin-top: 0.5rem;
+            cursor: pointer;
+        }
+        a {
+            display: inline-block;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>Play vs AI</h1>
+    <p>Configure your match against the computer.</p>
+
+    <form method="post" action="{{ url_for('multiplayer_ai_setup') }}">
+        <div>
+            <label for="player_name">Your name:</label><br>
+            <input type="text" id="player_name" name="player_name"
+                placeholder="You"
+                value="{{ default_player_name or '' }}" />
+        </div>
+
+        <div>
+            <label for="player_word">Word for the AI to guess:</label><br>
+            <input type="text" id="player_word" name="player_word" required />
+        </div>
+
+        <div>
+            <label for="ai_intelligence">AI Intelligence (0 - 100):</label><br>
+            <input type="number" id="ai_intelligence" name="ai_intelligence" min="0" max="100" value="{{ default_ai_intelligence}}" />
+        </div>
+
+        <button type="submit">Start Game</button>
+    </form>
+
+    <a href="{{ url_for('multiplayer_menu') }}">Back to Multiplayer Menu</a>
+</body>
+</html>
