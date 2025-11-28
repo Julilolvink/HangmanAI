@@ -2,7 +2,7 @@
 
 import os
 import random
-from flask import Flask, render_template, request, redirect, url_for, session
+from flask import Flask, render_template, request, redirect, url_for, session # type: ignore
 from game import SinglePlayerGame, HumanPlayer  # <-- updated import
 
 

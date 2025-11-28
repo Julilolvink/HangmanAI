@@ -5,6 +5,37 @@ import uuid
 import time
 from typing import List, Set, Optional
 
+# Approximate letter frequencies in English (relative usage)
+LETTER_FREQUENCIES = {
+    "e": 0.126621,
+    "t": 0.090728,
+    "a": 0.081756,
+    "o": 0.074777,
+    "i": 0.069791,
+    "n": 0.066803,
+    "s": 0.062812,
+    "h": 0.060916,
+    "r": 0.059821,
+    "d": 0.042871,
+    "l": 0.039880,
+    "c": 0.027918,
+    "u": 0.027918,
+    "m": 0.023929,
+    "w": 0.023929,
+    "f": 0.021934,
+    "g": 0.019940,
+    "y": 0.019940,
+    "p": 0.018947,
+    "b": 0.014958,
+    "v": 0.009970,
+    "k": 0.007976,
+    "j": 0.001994,
+    "x": 0.001994,
+    "q": 0.000998,
+    "z": 0.000998,
+}
+
+
 class Player:
     """
     Base player class.
@@ -25,6 +56,191 @@ class HumanPlayer(Player):
     so that VersusGame can easily distinguish between human and AI players.
     """
     pass
+
+class AIPlayer(Player):
+    """
+    AI-controlled player.
+
+    The important property here is 'intelligence':
+    - 0   = extremely dumb, almost completely random guesses
+    - 50  = average, partially guided by letter frequency
+    - 100 = very smart, heavily guided by letter frequency and can
+            "recognize" the word earlier
+
+    This class does NOT directly modify the game. It only decides
+    what move it *wants* to make, based on a 'view' of the game.
+    The game (VersusGame) remains responsible for actually applying
+    that move and updating state.
+    """
+
+    def __init__(self, player_id: str, name: str, intelligence: int) -> None:
+        super().__init__(player_id=player_id, name=name)
+        # Clamp intelligence to [0, 100] to avoid weird values
+        self.intelligence: int = max(0, min(100, intelligence))
+
+    def decide_move(self, game_view: dict) -> dict:
+        """
+        Decide what move to make based on the provided 'game_view'.
+
+        The view is expected to look like what VersusGame.get_view_for(...) returns:
+        {
+            "game_id": ...,
+            "player_id": ...,
+            "player_name": ...,
+            "opponent_name": ...,
+            "masked_opponent_word": "...",
+            "guessed_letters": [...],
+            "is_current_turn": bool,
+            "finished": bool,
+            "winner_id": ...
+        }
+
+        This method returns a dict describing the AI's chosen move:
+
+        - {"type": "solve"}
+            -> The AI claims to know the full word and wants to solve it.
+               The game will then reveal the entire word and declare the AI winner.
+
+        - {"type": "letter", "letter": "e"}
+            -> The AI wants to guess the single letter 'e'.
+
+        The caller (VersusGame or higher-level code) is responsible for:
+        - Checking that it's actually the AI's turn.
+        - Applying the move via guess_letter(...) or ai_solve_opponent_word(...).
+        """
+        # If the game is already finished, no move to make
+        if game_view.get("finished"):
+            return {"type": "none"}
+
+        # If it's not our turn, also do nothing
+        if not game_view.get("is_current_turn", False):
+            return {"type": "none"}
+
+        masked_word: str = game_view["masked_opponent_word"]
+        guessed_letters = set(game_view["guessed_letters"])
+
+        # First, see if we "recognize" the word
+        if self._should_attempt_solve(masked_word, guessed_letters):
+            # We don't need to know the actual word here; the game will
+            # handle revealing it when it sees this "solve" decision.
+            return {"type": "solve"}
+
+        # Otherwise, we guess a single letter
+        letter = self._choose_letter(masked_word, guessed_letters)
+        return {"type": "letter", "letter": letter}
+
+    # ------------------------------------------------------------------ #
+    # Internal helper methods
+    # ------------------------------------------------------------------ #
+
+    def _should_attempt_solve(
+        self,
+        masked_word: str,
+        guessed_letters: set[str],
+    ) -> bool:
+        """
+        Decide whether the AI believes it can recognize the word.
+
+        We use a rough heuristic:
+        - Compute the fraction of revealed letters (non-underscore chars).
+        - Combine that with the AI's intelligence to form a probability.
+        - Draw a random number; if it's lower than that probability, we "solve".
+
+        Formula idea inspired by your suggestion:
+
+        p = (revealed_ratio) ^ (11 - intelligence / 10)
+
+        - For low intelligence, exponent is high (e.g., 11), making p quite small
+          until the word is almost complete.
+        - For high intelligence, exponent is lower, so p grows faster as letters
+          are revealed.
+
+        We also ensure the word has at least 1 revealed letter before considering
+        a solve attempt.
+        """
+        # Count letters in the word and how many are revealed
+        length = len(masked_word)
+        if length == 0:
+            return False
+
+        revealed_count = sum(1 for ch in masked_word if ch != "_")
+        if revealed_count == 0:
+            # If we see nothing, we can't possibly "recognize" the word
+            return False
+
+        revealed_ratio = revealed_count / length
+
+        # Map intelligence [0, 100] -> exponent between about 11 and 1
+        exponent = max(1.0, 11.0 - self.intelligence / 10.0)
+
+        recognition_probability = revealed_ratio ** exponent
+
+        # Draw random number in [0, 1)
+        r = random.random()
+        return r < recognition_probability
+
+    def _choose_letter(self, masked_word: str, guessed_letters: set[str]) -> str:
+        """
+        Choose a letter to guess.
+
+        Strategy:
+        - Consider all letters a-z that have NOT been guessed yet.
+        - Use a blend of:
+            * uniform random choice
+            * English letter-frequency-based weighted choice
+          The blend factor depends on intelligence:
+            - intelligence 0  -> almost pure uniform random
+            - intelligence 50 -> roughly equal blend
+            - intelligence 100 -> almost pure frequency-based choice
+
+        This means smarter AIs are more likely to pick 'e', 't', 'a', etc.
+        """
+        all_letters = set("abcdefghijklmnopqrstuvwxyz")
+        remaining_letters = sorted(all_letters - guessed_letters)
+
+        # If somehow no letters remain (should be rare), just fallback to 'e'
+        if not remaining_letters:
+            return "e"
+
+        # Intelligence in [0, 1] as a blending factor
+        mix = self.intelligence / 100.0
+
+        # Build probability distribution over remaining letters
+        # based on a blend of uniform and frequency weights.
+        n = len(remaining_letters)
+        uniform_prob = 1.0 / n
+
+        # Normalize frequencies over remaining letters
+        freq_values = []
+        for ch in remaining_letters:
+            freq_values.append(LETTER_FREQUENCIES.get(ch, 0.001))  # tiny default for unknown
+
+        total_freq = sum(freq_values)
+        if total_freq <= 0:
+            # If something goes wrong, fallback to uniform random
+            return random.choice(remaining_letters)
+
+        normalized_freqs = [fv / total_freq for fv in freq_values]
+
+        # Blend uniform + frequency-based probabilities
+        probabilities: list[float] = []
+        for i in range(n):
+            p_uniform = uniform_prob
+            p_freq = normalized_freqs[i]
+            p = (1.0 - mix) * p_uniform + mix * p_freq
+            probabilities.append(p)
+
+        # Sample a letter according to the probabilities
+        # We build a cumulative distribution and draw a random number.
+        r = random.random()
+        cumulative = 0.0
+        for ch, p in zip(remaining_letters, probabilities):
+            cumulative += p
+            if r <= cumulative:
+                return ch
+
+        # Fallback in case of floating point issues
+        return remaining_letters[-1]
 
 class HangmanGame:
     """
@@ -355,6 +571,35 @@ class VersusGame(HangmanGame):
 
         # If correct, the same player keeps the turn
         return was_correct
+    
+    def ai_solve_opponent_word(self, player: Player) -> None:
+        """
+        Let 'player' correctly solve the opponent's word in one go.
+
+        This is used when an AI has "recognized" the word.
+
+        Effect:
+        - All letters in the opponent's secret word are considered guessed.
+        - The game is immediately finished with 'player' as the winner.
+        """
+        if self.finished:
+            return
+
+        current_player = self.get_current_player()
+        if player.id != current_player.id:
+            # Only the current player is allowed to solve
+            return
+
+        opponent = self.get_opponent_of(player)
+        opponent_word_state = self.word_states_by_owner[opponent.id]
+
+        # Reveal all letters in the opponent's word
+        for ch in opponent_word_state.secret_word:
+            opponent_word_state.guessed_letters.add(ch)
+
+        # Mark game as finished and record winner
+        self.finished = True
+        self.winner_id = player.id    
 
     def _switch_turn(self) -> None:
         """
