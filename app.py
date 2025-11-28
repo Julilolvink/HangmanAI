@@ -3,7 +3,6 @@
 import os
 import random
 from flask import Flask, render_template, request, redirect, url_for, session
-
 from game import HangmanGame
 
 app = Flask(__name__)
@@ -66,32 +65,32 @@ def load_game_from_session() -> HangmanGame | None:
 
 # --- ROUTES ------------------------------------------------------------------ #
 
-@app.route("/", methods=["GET", "POST"])
-def game_view():
+@app.route("/")
+def index():
     """
-    Main route for the game.
-    - GET: show current game or start a new one if none exists.
-    - POST: process a letter guess from the user.
+    Home menu: user can choose between singleplayer and (later) multiplayer.
+    """
+    return render_template("index.html")
+
+@app.route("/single", methods=["GET", "POST"])
+def singleplayer():
+    """
+    Singleplayer game view.
+    This is exactly what your old "/" route was doing, just moved.
     """
     game = load_game_from_session()
     if game is None:
-        # No game in session yet -> start a new one
         game = start_new_game()
         save_game_to_session(game)
 
     if request.method == "POST":
-        # Read the 'letter' field from the submitted form
         letter = request.form.get("letter", "").strip().lower()
-        # Perform the guess in the game object
         game.guess(letter)
-        # Save updated game back to the session
         save_game_to_session(game)
-        # Redirect to avoid form resubmit on refresh (Post/Redirect/Get pattern)
-        return redirect(url_for("game_view"))
+        return redirect(url_for("singleplayer"))
 
-    # For GET requests, render the template with the current game state
     return render_template(
-        "index.html",
+        "game.html",
         masked_word=game.masked_word(),
         wrong_guesses=game.wrong_guesses,
         remaining_attempts=game.remaining_attempts(),
@@ -102,14 +101,14 @@ def game_view():
     )
 
 
-@app.route("/new")
-def new_game():
+@app.route("/single/new")
+def new_singleplayer_game():
     """
-    Start a brand new game and redirect to the main game view.
+    Start a new singleplayer game and redirect back to the singleplayer view.
     """
     game = start_new_game()
     save_game_to_session(game)
-    return redirect(url_for("game_view"))
+    return redirect(url_for("singleplayer"))
 
 
 if __name__ == "__main__":
