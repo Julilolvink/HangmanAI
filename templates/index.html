@@ -1,0 +1,94 @@
+<!-- hangman_app/templates/game.html -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Hangman Game</title>
+    <style>
+        /* Very basic styling. You can make this pretty later. */
+
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 2rem auto;
+        }
+
+        .word {
+            font-size: 2rem;
+            letter-spacing: 0.2em;
+            margin-bottom: 1rem;
+        }
+
+        .status {
+            margin-bottom: 1rem;
+        }
+
+        .guessed {
+            margin-bottom: 1rem;
+        }
+
+        form {
+            margin-bottom: 1rem;
+        }
+
+        .finished {
+            font-weight: bold;
+            margin-top: 1rem;
+        }
+
+        button {
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Hangman</h1>
+
+    <!-- Display the masked word e.g. "_ y t h o n" -->
+    <div class="word">
+        {% for ch in masked_word %}
+            {{ ch }}&nbsp;
+        {% endfor %}
+    </div>
+
+    <div class="status">
+        Wrong guesses: {{ wrong_guesses }} / {{ remaining_attempts + wrong_guesses }}<br>
+        Remaining attempts: {{ remaining_attempts }}
+    </div>
+
+    <div class="guessed">
+        Guessed letters:
+        {% if guessed_letters %}
+            {{ guessed_letters | join(", ") }}
+        {% else %}
+            (none yet)
+        {% endif %}
+    </div>
+
+    {% if not finished %}
+        <!-- Guess form: posts back to "/" -->
+        <form method="post" action="{{ url_for('game_view') }}">
+            <label for="letter">Guess a letter:</label>
+            <input type="text" id="letter" name="letter" maxlength="1" required>
+            <button type="submit">Guess</button>
+        </form>
+    {% else %}
+        <div class="finished">
+            {% if won %}
+                🎉 You won! The word was "{{ secret_word }}".
+            {% else %}
+                😢 You lost. The word was "{{ secret_word }}".
+            {% endif %}
+        </div>
+    {% endif %}
+
+    <!-- Button to start a new game -->
+    <form method="get" action="{{ url_for('new_game') }}">
+        <button type="submit">Start New Game</button>
+    </form>
+
+</body>
+</html>
