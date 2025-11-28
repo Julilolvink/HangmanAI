@@ -3,7 +3,8 @@
 import os
 import random
 from flask import Flask, render_template, request, redirect, url_for, session
-from game import HangmanGame
+from game import SinglePlayerGame, HumanPlayer  # <-- updated import
+
 
 app = Flask(__name__)
 
@@ -37,30 +38,34 @@ def load_words() -> list[str]:
 WORDS = load_words()
 
 
-def start_new_game() -> HangmanGame:
+def start_new_game() -> SinglePlayerGame:
     """
-    Create a new HangmanGame with a random word from WORDS.
+    Create a new SinglePlayerGame instance.
+
+    For now, we hardcode a simple human player with id 'p1' and name 'You'.
+    Later, when we add login, we can derive this from the user account.
     """
+    player = HumanPlayer(player_id="p1", name="You")
     secret_word = random.choice(WORDS)
-    return HangmanGame(secret_word=secret_word, max_attempts=6)
+    game = SinglePlayerGame(player=player, secret_word=secret_word, max_attempts=6)
+    return game
 
 
-def save_game_to_session(game: HangmanGame) -> None:
+def save_game_to_session(game: SinglePlayerGame) -> None:
     """
-    Store the game state in the Flask session.
-    We store it as a dict because the session is JSON-serialized.
+    Store the current game's state in the Flask session.
     """
-    session["game"] = game.to_dict()
+    session["singleplayer_game"] = game.to_dict()
 
 
-def load_game_from_session() -> HangmanGame | None:
+def load_game_from_session() -> SinglePlayerGame | None:
     """
-    Retrieve the game state from the session, if it exists.
+    Retrieve the game state from the Flask session, if it exists.
     """
-    data = session.get("game")
+    data = session.get("singleplayer_game")
     if not data:
         return None
-    return HangmanGame.from_dict(data)
+    return SinglePlayerGame.from_dict(data)
 
 
 # --- ROUTES ------------------------------------------------------------------ #
