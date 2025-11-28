@@ -132,6 +132,20 @@
                     Game finished with no winner? (Should not normally happen.)
                 {% endif %}
             </div>
+
+            <hr>
+
+            {% if not my_vote %}
+                <form method="post" action="{{ url_for('pvp_rematch', room_id=room_id) }}">
+                    <button type="submit">Request rematch</button>
+                </form>
+            {% else %}
+                {% if opp_vote %}
+                    <p>Both of you requested a rematch. If nothing changed yet, wait a moment for the reset.</p>
+                {% else %}
+                    <p>You requested a rematch. Waiting for {{ opponent_name }} to accept...</p>
+                {% endif %}
+            {% endif %}
         {% endif %}
 
         <a href="{{ url_for('multiplayer_menu') }}">Back to Multiplayer Menu</a>
@@ -146,9 +160,10 @@
 
 {% if mode == "waiting_for_opponent"
        or mode == "waiting_for_other_word"
+       or mode == "finished"
        or (mode == "in_game" and not _is_current_turn and not _finished) %}
 <script>
-    const currentVersion = {{ current_version | default(0) | int }};
+    const currentVersion ='{{ current_version | default(0) | int }}';
     const stateUrl = "{{ url_for('pvp_room_state', room_id=room_id) }}";
 
     function checkForUpdates() {

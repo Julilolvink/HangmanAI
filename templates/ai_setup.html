@@ -43,7 +43,9 @@
     <form method="post" action="{{ url_for('multiplayer_ai_setup') }}">
         <div>
             <label for="player_name">Your name:</label><br>
-            <input type="text" id="player_name" name="player_name" placeholder="You" />
+            <input type="text" id="player_name" name="player_name"
+                placeholder="You"
+                value="{{ default_player_name or '' }}" />
         </div>
 
         <div>
@@ -53,7 +55,7 @@
 
         <div>
             <label for="ai_intelligence">AI Intelligence (0 - 100):</label><br>
-            <input type="number" id="ai_intelligence" name="ai_intelligence" min="0" max="100" value="50" />
+            <input type="number" id="ai_intelligence" name="ai_intelligence" min="0" max="100" value="{{ default_ai_intelligence}}" />
         </div>
 
         <button type="submit">Start Game</button>

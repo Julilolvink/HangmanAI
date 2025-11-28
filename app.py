@@ -67,6 +67,8 @@ class GameRoom:
     - words: dict[player_id -> secret_word str or None]
     - game: VersusGame or None (before both words are set)
     - version: increments every time the room/game state changes
+    - rematch_votes: dict[player_id -> bool]
+
 
     """
     def __init__(self, room_id: str) -> None:
@@ -74,7 +76,9 @@ class GameRoom:
         self.players: dict[str, HumanPlayer] = {}
         self.words: dict[str, str | None] = {}
         self.game: VersusGame | None = None
-        self.version: int = 0  # <--- NEW
+        self.version: int = 0
+        self.rematch_votes: dict[str, bool] = {}
+
 
     def add_player(self, player: HumanPlayer) -> bool:
         """
@@ -95,6 +99,8 @@ class GameRoom:
         self.players[player.id] = player
         # Initialize their word slot
         self.words[player.id] = None
+        self.rematch_votes[player.id] = False
+
 
         # Increment version on change
         self.version += 1
@@ -355,6 +361,9 @@ def multiplayer_ai_setup():
         # Clamp AI intelligence to [0, 100]
         ai_intelligence = max(0, min(100, ai_intelligence))
 
+        session["ai_last_player_name"] = player_name
+        session["ai_last_ai_intelligence"] = ai_intelligence
+
         # Create and store game
         game = start_new_versus_ai_game(
             player_name=player_name,
@@ -366,8 +375,15 @@ def multiplayer_ai_setup():
         session["ai_last_message"] = random.choice(AI_START_LINES)
 
         return redirect(url_for("multiplayer_ai_game"))
+    
+    default_player_name = session.get("ai_last_player_name", "")
+    default_ai_intelligence = session.get("ai_last_ai_intelligence", 50)
 
-    return render_template("ai_setup.html")
+    return render_template(
+        "ai_setup.html",
+        default_player_name=default_player_name,
+        default_ai_intelligence=default_ai_intelligence,
+    )
 
 @app.route("/multiplayer/ai/game", methods=["GET", "POST"])
 def multiplayer_ai_game():
@@ -690,6 +706,9 @@ def pvp_room(room_id: str):
     my_id = player.id
     opp_id = room.other_player(player_id).id
 
+    my_vote = room.rematch_votes.get(my_id, False)
+    opp_vote = room.rematch_votes.get(opp_id, False)
+
     return render_template(
         "pvp_room.html",
         room_id=room_id,
@@ -712,6 +731,9 @@ def pvp_room(room_id: str):
         opp_id=opp_id,
 
         current_version=room.version,
+
+        my_vote=my_vote,
+        opp_vote=opp_vote,
     )
 
 @app.route("/multiplayer/pvp/room/<room_id>/word", methods=["POST"])
@@ -736,6 +758,8 @@ def pvp_submit_word(room_id: str):
         return redirect(url_for("pvp_room", room_id=room_id))
 
     room.words[player_id] = word_clean
+    room.rematch_votes = {pid: False for pid in room.players.keys()}
+
     room.version += 1  # word changed -> version++
 
 
@@ -845,6 +869,42 @@ def pvp_room_state(room_id: str):
         }
     )
 
+@app.route("/multiplayer/pvp/room/<room_id>/rematch", methods=["POST"])
+def pvp_rematch(room_id: str):
+    """
+    Current player votes for a rematch.
+    When both players in the room have voted True, the room is reset
+    to the word-selection phase with the same two players.
+    """
+    room = ROOMS.get(room_id)
+    if room is None or room.game is None:
+        return redirect(url_for("pvp_room", room_id=room_id))
+
+    # Identify player
+    player_id, _ = get_current_pvp_player()
+    if player_id not in room.players:
+        return redirect(url_for("pvp_join"))
+
+    # Only meaningful if the game has finished
+    if not room.game.finished:
+        return redirect(url_for("pvp_room", room_id=room_id))
+
+    # Record this player's vote
+    room.rematch_votes[player_id] = True
+    room.version += 1
+
+    # Check if both players are present and have voted
+    if len(room.players) == 2:
+        all_voted = all(room.rematch_votes.get(pid, False) for pid in room.players.keys())
+        if all_voted:
+            # Reset words & game, but keep players
+            for pid in room.players.keys():
+                room.words[pid] = None
+            room.game = None
+            room.rematch_votes = {pid: False for pid in room.players.keys()}
+            room.version += 1  # new phase -> version++
+
+    return redirect(url_for("pvp_room", room_id=room_id))
 
 if __name__ == "__main__":
     # Local development entrypoint.
