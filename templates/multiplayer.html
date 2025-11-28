@@ -1,9 +1,9 @@
-<!-- templates/index.html -->
+<!-- templates/multiplayer.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Hangman - Menu</title>
+    <title>Hangman - Multiplayer</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -38,13 +38,11 @@
     </style>
 </head>
 <body>
-    <h1>Hangman</h1>
+    <h1>Multiplayer</h1>
     <div class="menu">
-        <!-- Link to our current singleplayer game -->
-        <a href="{{ url_for('singleplayer') }}">Play Singleplayer</a>
-
-        <!-- Placeholder for later -->
-        <a href="{{ url_for('multiplayer_menu') }}">Play Multiplayer</a>
+        <a href="{{ url_for('multiplayer_ai_setup') }}">Play vs AI</a>
+        <button class="coming-soon" disabled>Play vs Player (coming soon)</button>
+        <a href="{{ url_for('index') }}">Back to Main Menu</a>
     </div>
 </body>
 </html>

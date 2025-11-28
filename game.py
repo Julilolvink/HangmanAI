@@ -666,18 +666,34 @@ class VersusGame(HangmanGame):
 
     def to_dict(self) -> dict:
         """
-        Serialize the VersusGame into a dict so it can be stored (e.g. in session or DB).
+        Serialize the VersusGame into a dict so it can be stored (e.g. in session).
 
-        NOTE: We don't store exact subclass types of players here (e.g. Human vs AI),
-        just their ids and names. The caller is responsible for reconstructing
-        appropriate Player/AIPlayer instances when calling 'from_dict'.
+        We store:
+        - Game id
+        - Players (with type info: human or ai, and AI intelligence if applicable)
+        - Word states for each owner
+        - Current turn index
+        - Finished flag & winner
+        - Turn start time (for timeouts)
         """
+        players_data = []
+        for p in self.players:
+            base = {
+                "id": p.id,
+                "name": p.name,
+            }
+            if isinstance(p, AIPlayer):
+                base["type"] = "ai"
+                base["intelligence"] = p.intelligence
+            elif isinstance(p, HumanPlayer):
+                base["type"] = "human"
+            else:
+                base["type"] = "generic"
+            players_data.append(base)
+
         return {
             "id": self.id,
-            "players": [
-                {"id": p.id, "name": p.name}
-                for p in self.players
-            ],
+            "players": players_data,
             "word_states_by_owner": {
                 owner_id: ws.to_dict()
                 for owner_id, ws in self.word_states_by_owner.items()
@@ -688,28 +704,37 @@ class VersusGame(HangmanGame):
             "turn_started_at": self.turn_started_at,
         }
 
+
     @classmethod
     def from_dict(cls, data: dict) -> "VersusGame":
         """
         Restore a VersusGame from its serialized dict form.
 
-        For now, we reconstruct all players as generic Player instances.
-        Later, when we add AIPlayer, the caller might choose to construct
-        AIPlayer/HumanPlayer explicitly and then set up the VersusGame manually.
+        We reconstruct:
+        - HumanPlayer for type 'human'
+        - AIPlayer for type 'ai'
+        - Generic Player otherwise (fallback)
         """
-        # Rebuild players list
-        players: List[Player] = [
-            Player(player_id=p["id"], name=p["name"]) for p in data["players"]
-        ]
+        players_data = data["players"]
+        players: List[Player] = []
+
+        for p in players_data:
+            p_type = p.get("type", "generic")
+            if p_type == "human":
+                player = HumanPlayer(player_id=p["id"], name=p["name"])
+            elif p_type == "ai":
+                intelligence = p.get("intelligence", 50)
+                player = AIPlayer(player_id=p["id"], name=p["name"], intelligence=intelligence)
+            else:
+                player = Player(player_id=p["id"], name=p["name"])
+            players.append(player)
 
         if len(players) != 2:
             raise ValueError("VersusGame.from_dict expects exactly 2 players.")
 
-        # We need the words to pass to the constructor. Extract from word_states.
         ws_data = data["word_states_by_owner"]
 
-        # The constructor expects word_for_player1 (word owned by players[0])
-        # and word_for_player2 (word owned by players[1]).
+        # The constructor expects the word owned by players[0] and players[1].
         word_for_player1 = ws_data[players[0].id]["secret_word"]
         word_for_player2 = ws_data[players[1].id]["secret_word"]
 
