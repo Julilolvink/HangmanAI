@@ -16,6 +16,12 @@
         .info {
             margin-bottom: 1rem;
         }
+        .ai-dialogue {
+            margin-bottom: 1rem;
+            padding: 0.75rem;
+            border-left: 4px solid #ccc;
+            background-color: #f9f9f9;
+        }
         .word {
             font-size: 2rem;
             letter-spacing: 0.2em;
@@ -87,20 +93,42 @@
     </div>
 
     {% if not finished %}
-        <div class="status">
-            {% if is_current_turn %}
-                It's your turn. Guess a letter!
-            {% else %}
-                It's {{ ai_name }}'s turn. (Reload if nothing seems to happen.)
-            {% endif %}
-        </div>
-
         {% if is_current_turn %}
+            <div class="status">
+                It's your turn. Guess a letter!
+            </div>
+
             <form method="post" action="{{ url_for('multiplayer_ai_game') }}">
                 <label for="letter">Guess a letter:</label>
                 <input type="text" id="letter" name="letter" maxlength="1" required>
                 <button type="submit">Guess</button>
             </form>
+        {% elif is_ai_turn %}
+            <div class="status">
+                It's {{ ai_name }}'s turn. {{ ai_name }} is thinking...
+            </div>
+
+            <script>
+                // After a short delay, ask the AI to make its move.
+                // Randomize a little so it feels less robotic.
+                const delayMs = 1500 + Math.random() * 1500;  // 1.5s - 3s
+
+                setTimeout(function() {
+                    fetch("{{ url_for('multiplayer_ai_move') }}", {
+                        method: "POST",
+                        headers: {
+                            "X-Requested-With": "XMLHttpRequest"
+                        }
+                    }).then(function() {
+                        // Reload the page to see the AI's move
+                        window.location.reload();
+                    });
+                }, delayMs);
+            </script>
+        {% else %}
+            <div class="status">
+                Waiting for the next move...
+            </div>
         {% endif %}
     {% else %}
         <div class="finished">
@@ -117,6 +145,17 @@
             <button type="submit">Play Again vs AI</button>
         </form>
     {% endif %}
+
+    <div class="ai-dialogue">
+        <strong>{{ ai_name }} says:</strong>
+        <p>
+            {% if ai_last_message %}
+                {{ ai_last_message }}
+            {% else %}
+                ...
+            {% endif %}
+        </p>
+    </div>
 
     <a href="{{ url_for('multiplayer_menu') }}">Back to Multiplayer Menu</a>
 

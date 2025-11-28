@@ -5,6 +5,55 @@ import random
 from flask import Flask, render_template, request, redirect, url_for, session # type: ignore
 from game import SinglePlayerGame, HumanPlayer, AIPlayer, VersusGame
 
+# --- AI DIALOGUE TEMPLATES -------------------------------------------------- #
+
+AI_START_LINES = [
+    "Alright, let's see what you've got!",
+    "A new game? I'm ready when you are.",
+    "Time for a little mental workout.",
+]
+
+AI_LETTER_CORRECT_LINES = [
+    "Hmm... I'll guess '{letter}'. Looks like I was right.",
+    "Let's try '{letter}'. Nice, that fits!",
+    "I'm thinking '{letter}'. Oh, that helped a lot.",
+]
+
+AI_LETTER_WRONG_LINES = [
+    "How about '{letter}'? ...Oh, that was wrong.",
+    "I'll go with '{letter}'. Huh, really? Not in there?",
+    "Maybe '{letter}'? Oops, that didn't help.",
+]
+
+AI_SOLVE_LINES = [
+    "Oh! I know! It's '{word}', isn't it!",
+    "Everything lines up... The word must be '{word}'.",
+    "Got it. Your word is '{word}'.",
+]
+
+AI_WIN_LINES = [
+    "Looks like I win this one!",
+    "Game over. Better luck next time!",
+    "That was fun. I’ll take the victory.",
+]
+
+AI_LOSE_LINES = [
+    "You got me this time. Well played!",
+    "Nice! You solved it before I could.",
+    "Okay, okay, you win. Good game!",
+]
+
+AI_PLAYER_GUESS_CORRECT_LINES = [
+    "Nice guess, '{letter}' is in my word.",
+    "Uh-oh, you found a letter with '{letter}'.",
+    "You're getting closer with that '{letter}'.",
+]
+
+AI_PLAYER_GUESS_WRONG_LINES = [
+    "Phew, safe. '{letter}' isn't in my word.",
+    "Nope, not '{letter}'.",
+    "Good try, but '{letter}' isn't there.",
+]
 
 
 app = Flask(__name__)
@@ -207,6 +256,8 @@ def multiplayer_ai_setup():
         )
         save_versus_ai_game_to_session(game)
 
+        session["ai_last_message"] = random.choice(AI_START_LINES)
+
         return redirect(url_for("multiplayer_ai_game"))
 
     return render_template("ai_setup.html")
@@ -216,15 +267,15 @@ def multiplayer_ai_game():
     """
     Actual VersusGame vs AI.
 
+    - POST: process a human guess, save game, maybe set an AI losing line if the game ends.
     - GET: show current game state from the human's perspective.
-    - POST: process a human guess, then let the AI take its turn(s), then redirect.
+           If it's AI's turn, the template will trigger an AI move after a delay.
     """
     game = load_versus_ai_game_from_session()
     if game is None:
-        # If somehow no game in session, go back to AI setup
         return redirect(url_for("multiplayer_ai_setup"))
 
-    # Find the human and AI players in this game
+    # Find the human and AI players
     human = None
     ai = None
     for p in game.players:
@@ -234,83 +285,47 @@ def multiplayer_ai_game():
             ai = p
 
     if human is None or ai is None:
-        # If something is wrong with player types, reset to setup
         return redirect(url_for("multiplayer_ai_setup"))
 
     if request.method == "POST":
-        # --- HUMAN TURN ---------------------------------------------------- #
+    # --- HUMAN TURN ---------------------------------------------------- #
         letter = request.form.get("letter", "").strip().lower()
         if letter:
-            # Let the human attempt a guess
-            game.guess_letter(human, letter)
+            # Let the human attempt a guess and capture if it was correct
+            was_correct = game.guess_letter(human, letter)
 
-        # --- AI TURN(S) ---------------------------------------------------- #
-        # After the human's move, it's possible that:
-        # - The game has ended (human won).
-        # - It is still the human's turn (correct guess).
-        # - It is now the AI's turn (wrong guess, or we add timeout logic later).
-
-        while (not game.finished) and isinstance(game.get_current_player(), AIPlayer):
-            # Build a view for the AI
-            view_for_ai = game.get_view_for(ai)
-            move = ai.decide_move(view_for_ai)
-
-            move_type = move.get("type")
-            if move_type == "solve":
-                game.ai_solve_opponent_word(ai)
-                break
-            elif move_type == "letter":
-                letter_to_guess = move.get("letter", "")
-                if letter_to_guess:
-                    game.guess_letter(ai, letter_to_guess)
-                else:
-                    break
+            # Decide what the AI says about this guess
+            if game.finished and game.winner_id == human.id:
+                # Human just won
+                ai_line = random.choice(AI_LOSE_LINES)
             else:
-                # "none" or unknown -> stop AI loop
-                break
+                # Game continues, react to the correctness of the guess
+                if was_correct:
+                    template = random.choice(AI_PLAYER_GUESS_CORRECT_LINES)
+                else:
+                    template = random.choice(AI_PLAYER_GUESS_WRONG_LINES)
+                ai_line = template.format(letter=letter)
 
-        # Save updated game state and redirect (Post/Redirect/Get)
+            session["ai_last_message"] = ai_line
+
         save_versus_ai_game_to_session(game)
         return redirect(url_for("multiplayer_ai_game"))
 
+
     # ------------------------- GET branch --------------------------------- #
-    # If it's the AI's turn when the page loads, let the AI play immediately
-    if (not game.finished) and isinstance(game.get_current_player(), AIPlayer):
-        while (not game.finished) and isinstance(game.get_current_player(), AIPlayer):
-            view_for_ai = game.get_view_for(ai)
-            move = ai.decide_move(view_for_ai)
 
-            move_type = move.get("type")
-            if move_type == "solve":
-                game.ai_solve_opponent_word(ai)
-                break
-            elif move_type == "letter":
-                letter_to_guess = move.get("letter", "")
-                if letter_to_guess:
-                    game.guess_letter(ai, letter_to_guess)
-                else:
-                    break
-            else:
-                break
-
-        save_versus_ai_game_to_session(game)
-        # After AI moves, we continue to render the updated state below
-
-    # For GET: prepare view for the human and AI
+    # Prepare views for human and AI
     view_for_human = game.get_view_for(human)
     view_for_ai = game.get_view_for(ai)
 
-    # The word you (the human) are trying to guess is the AI's word,
-    # which is stored in the WordState owned by the AI player.
+    # Is it currently the AI's turn? (Two-player game => not human => AI)
+    is_ai_turn = (not view_for_human["finished"]) and (not view_for_human["is_current_turn"])
+
+    # AI's secret word (what the human is trying to guess)
     ai_secret_word = game.word_states_by_owner[ai.id].secret_word
 
-
-    # Additionally, we can show AI's guessed letters and maybe how much of
-    # the player's word is revealed. But we will keep it simple for now.
-    # We'll show:
-    # - Word the human is trying to guess (AI's word), masked
-    # - Whose turn it is
-    # - Basic end-of-game result
+    # Last AI message from the session (if any)
+    ai_last_message = session.get("ai_last_message")
 
     return render_template(
         "ai_game.html",
@@ -326,15 +341,112 @@ def multiplayer_ai_game():
         ai_masked_word=view_for_ai["masked_opponent_word"],
         ai_guessed_letters=view_for_ai["guessed_letters"],
 
-        # New: full AI word (we'll only show it on loss)
+        # For losing feedback:
         ai_secret_word=ai_secret_word,
 
+        # Turn and game state:
         is_current_turn=view_for_human["is_current_turn"],
+        is_ai_turn=is_ai_turn,
         finished=view_for_human["finished"],
         winner_id=view_for_human["winner_id"],
         human_id=human.id,
         ai_id=ai.id,
+
+        # AI dialogue:
+        ai_last_message=ai_last_message,
     )
+
+@app.route("/multiplayer/ai/move", methods=["POST"])
+def multiplayer_ai_move():
+    """
+    Let the AI take exactly one move (letter guess or solve) with a small delay
+    triggered from the frontend.
+
+    This route:
+    - Checks it's actually the AI's turn and the game isn't finished.
+    - Asks the AI for a move.
+    - Applies that move to the game.
+    - Sets an appropriate AI dialogue line describing the action.
+    """
+    game = load_versus_ai_game_from_session()
+    if game is None:
+        return redirect(url_for("multiplayer_ai_setup"))
+
+    # Find human and AI
+    human = None
+    ai = None
+    for p in game.players:
+        if isinstance(p, HumanPlayer):
+            human = p
+        elif isinstance(p, AIPlayer):
+            ai = p
+
+    if human is None or ai is None:
+        return redirect(url_for("multiplayer_ai_setup"))
+
+    # If the game is already finished, just go back
+    if game.finished:
+        return redirect(url_for("multiplayer_ai_game"))
+
+    # It should be the AI's turn
+    if not isinstance(game.get_current_player(), AIPlayer):
+        return redirect(url_for("multiplayer_ai_game"))
+
+    # Build view and let AI decide its move
+    view_for_ai = game.get_view_for(ai)
+    move = ai.decide_move(view_for_ai)
+    move_type = move.get("type")
+
+    # We'll build a line to store in session
+    ai_line = None
+
+    if move_type == "solve":
+        # AI solves human's word
+        # For the line we need the human's secret word
+        human_word_state = game.word_states_by_owner[human.id]
+        word = human_word_state.secret_word
+        game.ai_solve_opponent_word(ai)
+
+        # Pick a solve-style line
+        template = random.choice(AI_SOLVE_LINES)
+        ai_line = template.format(word=word)
+
+    elif move_type == "letter":
+        letter = move.get("letter", "")
+        if letter:
+            # Apply the guess; see if it was correct
+            was_correct = game.guess_letter(ai, letter)
+
+            if was_correct:
+                template = random.choice(AI_LETTER_CORRECT_LINES)
+            else:
+                template = random.choice(AI_LETTER_WRONG_LINES)
+
+            ai_line = template.format(letter=letter)
+        else:
+            # No valid letter - just do nothing
+            ai_line = "Hmm... I'm not sure what to guess."
+
+    else:
+        # 'none' or unknown type
+        ai_line = "I'll wait and see what you do next."
+
+    # If the move ended the game and AI won, adjust the line
+    if game.finished and game.winner_id == ai.id:
+        if move_type == "solve":
+            # Keep the solve line visible when AI wins by solving
+            # (ai_line already contains the "I know! It's {word}" message)
+            pass
+        else:
+            # For a win by regular letter guessing, use a generic win line
+            ai_line = random.choice(AI_WIN_LINES)
+            
+    # Store last AI message
+    session["ai_last_message"] = ai_line
+
+    save_versus_ai_game_to_session(game)
+    return redirect(url_for("multiplayer_ai_game"))
+
 
 
 if __name__ == "__main__":
